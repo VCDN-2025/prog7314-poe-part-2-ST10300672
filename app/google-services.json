@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "417623431727",
+    "project_id": "task-master-f7f42",
+    "storage_bucket": "task-master-f7f42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:417623431727:android:f2a12cb3296dc04ddc04da",
+        "android_client_info": {
+          "package_name": "com.example.taskmaster"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAi9mNum4WUZalFVTlP0zjfBg7fcgINPhg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

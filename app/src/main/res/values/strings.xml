@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">TaskMaster</string>
+
+    <string name="default_web_client_id">
+        417623431727-rnvm7ro8lvbpq5fhomilfnh5p2588ekh.apps.googleusercontent.com
+    </string>
+</resources>

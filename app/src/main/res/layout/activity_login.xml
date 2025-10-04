@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp"
+    android:background="@android:color/white">
+
+    <!-- App Icon -->
+    <ImageView
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:src="@mipmap/ic_launcher_round"
+        android:contentDescription="App Logo"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Welcome Text -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Welcome to TaskMaster"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/black"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Subtitle -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Your smart to-do list app"
+        android:textSize="16sp"
+        android:textColor="@android:color/darker_gray"
+        android:layout_marginBottom="40dp" />
+
+    <!-- Google Sign-In Button -->
+    <Button
+        android:id="@+id/btnGoogleSignIn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:backgroundTint="@android:color/white"
+        android:drawableLeft="@drawable/ic_google_logo"
+        android:drawablePadding="12dp"
+        android:padding="12dp"
+        android:text="Sign in with Google"
+        android:textColor="@android:color/black"
+        android:textSize="16sp"
+        android:elevation="4dp" />
+
+
+</LinearLayout>
