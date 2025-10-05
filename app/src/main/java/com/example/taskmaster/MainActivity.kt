@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -13,13 +14,20 @@ import com.example.taskmaster.adapter.TaskAdapter
 import com.example.taskmaster.model.Task
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.firestore
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
     private lateinit var taskAdapter: TaskAdapter
-    private val tasks = mutableListOf<Task>() // Shared local list for now
+    private val tasks = mutableListOf<Task>()
+
+    // Firebase Firestore
+    private val db: FirebaseFirestore = Firebase.firestore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,13 +49,23 @@ class MainActivity : AppCompatActivity() {
         tvEmail.text = user?.email ?: "No Email"
         Glide.with(this).load(user?.photoUrl).into(imgProfile)
 
-        // --- RecyclerView Setup ---
-        taskAdapter = TaskAdapter(tasks)
+        // --- RecyclerView Setup (read-only) ---
+        taskAdapter = TaskAdapter(
+            tasks,
+            onTaskUpdated = { task -> updateTaskCompletionInFirestore(task) },
+            onTaskDeleted = {} // disable deletion/edit here
+        )
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = taskAdapter
 
-        // --- Load sample or shared tasks (temporary placeholder) ---
-        loadSampleTasks()
+        // --- Enable Firestore offline persistence ---
+        val settings = FirebaseFirestoreSettings.Builder()
+            .setPersistenceEnabled(true)
+            .build()
+        db.firestoreSettings = settings
+
+        // --- Load tasks from Firestore ---
+        listenToTasksRealtime()
 
         // --- Navigate to Full Task List ---
         btnOpenTasks.setOnClickListener {
@@ -57,7 +75,6 @@ class MainActivity : AppCompatActivity() {
         // --- Logout ---
         btnLogout.setOnClickListener {
             auth.signOut()
-
             val googleSignInClient = GoogleSignIn.getClient(
                 this,
                 GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -65,7 +82,6 @@ class MainActivity : AppCompatActivity() {
                     .requestEmail()
                     .build()
             )
-
             googleSignInClient.signOut().addOnCompleteListener {
                 startActivity(Intent(this, LoginActivity::class.java))
                 finish()
@@ -73,13 +89,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadSampleTasks() {
-        // You can later replace this with Firestore or shared preferences
-        if (tasks.isEmpty()) {
-            tasks.add(Task("1", "Check mail", "Read new messages", false))
-            tasks.add(Task("2", "Meeting prep", "Prepare slides for project update", true))
-            tasks.add(Task("3", "Grocery shopping", "Buy milk and eggs", false))
-            taskAdapter.notifyDataSetChanged()
-        }
+    // 🔹 Real-time Firestore listener
+    private fun listenToTasksRealtime() {
+        val userId = auth.currentUser?.uid ?: return
+
+        db.collection("users")
+            .document(userId)
+            .collection("tasks")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Toast.makeText(this, "Error loading tasks: ${error.message}", Toast.LENGTH_SHORT).show()
+                    return@addSnapshotListener
+                }
+
+                tasks.clear()
+                snapshot?.documents?.forEach { doc ->
+                    val task = doc.toObject(Task::class.java)
+                    if (task != null) tasks.add(task)
+                }
+                taskAdapter.notifyDataSetChanged()
+            }
+    }
+
+    // 🔹 Update task completion
+    private fun updateTaskCompletionInFirestore(task: Task) {
+        val userId = auth.currentUser?.uid ?: return
+
+        db.collection("users")
+            .document(userId)
+            .collection("tasks")
+            .document(task.id)
+            .update("completed", task.completed)
+            .addOnSuccessListener { /* no toast needed */ }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Failed to update task: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 }
