@@ -2,10 +2,11 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="24dp"
+    android:gravity="center_horizontal">
 
+    <!-- Profile Section -->
     <ImageView
         android:id="@+id/imgProfile"
         android:layout_width="100dp"
@@ -29,11 +30,36 @@
         android:textSize="16sp"
         android:layout_marginTop="8dp" />
 
+    <!-- Short Task Preview List -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Your Recent Tasks"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:layout_marginTop="24dp"
+        android:paddingBottom="8dp"
+        android:textColor="@android:color/black" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewTasks"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginBottom="8dp"
+        android:padding="4dp" />
+
+    <!-- Buttons -->
+    <Button
+        android:id="@+id/btnOpenTasks"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Open Tasks Page"
+        android:layout_marginTop="16dp" />
+
     <Button
         android:id="@+id/btnLogout"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Logout"
-        android:layout_marginTop="24dp" />
-
+        android:layout_marginTop="16dp" />
 </LinearLayout>
