@@ -7,7 +7,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 
 object RetrofitInstance {
 
-    private const val BASE_URL = "http://192.168.8.80:5000/"
+    private const val BASE_URL = "https://taskmaster-api-crox.onrender.com/"
 
     private val client by lazy {
         val logging = HttpLoggingInterceptor()
