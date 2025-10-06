@@ -12,11 +12,12 @@ import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.example.taskmaster.R
 import com.example.taskmaster.model.Task
+import androidx.appcompat.app.AlertDialog
 
 class TaskAdapter(
     private val tasks: MutableList<Task>,
-    private val onTaskUpdated: ((Task) -> Unit)? = null,   // optional callback for updates
-    private val onTaskDeleted: ((Task) -> Unit)? = null    // optional callback for deletes
+    private val onTaskUpdated: ((Task) -> Unit)? = null,
+    private val onTaskDeleted: ((Task) -> Unit)? = null
 ) : RecyclerView.Adapter<TaskAdapter.TaskViewHolder>() {
 
     inner class TaskViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -35,40 +36,41 @@ class TaskAdapter(
         val task = tasks[position]
         holder.tvTitle.text = task.title
         holder.tvDesc.text = task.description
-
         holder.cbDone.setOnCheckedChangeListener(null)
         holder.cbDone.isChecked = task.completed
 
-        // Update completed state if callback is provided
+        // Toggle completion (optimistic update). Activity will call the API and refresh on success/failure.
         holder.cbDone.setOnCheckedChangeListener { _, isChecked ->
             task.completed = isChecked
             onTaskUpdated?.invoke(task)
+            // update this row immediately
+            notifyItemChanged(holder.adapterPosition)
         }
 
-        // Only allow long-press edit/delete if callbacks exist (e.g., in TaskListActivity)
-        if (onTaskUpdated != null || onTaskDeleted != null) {
-            holder.itemView.setOnLongClickListener {
-                val context = holder.itemView.context
-                val options = mutableListOf<String>()
-                if (onTaskUpdated != null) options.add("Edit")
-                if (onTaskDeleted != null) options.add("Delete")
-
-                androidx.appcompat.app.AlertDialog.Builder(context)
-                    .setTitle("Task Options")
-                    .setItems(options.toTypedArray()) { _, which ->
-                        when (options[which]) {
-                            "Edit" -> showEditDialog(context, task)
-                            "Delete" -> showDeleteConfirmation(context, task)
-                        }
-                    }
-                    .show()
-                true
-            }
+        holder.itemView.setOnLongClickListener {
+            showTaskOptions(holder.itemView.context, task, holder.adapterPosition)
+            true
         }
     }
 
-    private fun showEditDialog(context: Context, task: Task) {
-        val linear = LinearLayout(context).apply {
+    private fun showTaskOptions(context: Context, task: Task, position: Int) {
+        val options = mutableListOf<String>()
+        if (onTaskUpdated != null) options.add("Edit")
+        if (onTaskDeleted != null) options.add("Delete")
+
+        AlertDialog.Builder(context)
+            .setTitle("Task Options")
+            .setItems(options.toTypedArray()) { _, which ->
+                when (options[which]) {
+                    "Edit" -> showEditDialog(context, task, position)
+                    "Delete" -> showDeleteConfirmation(context, task, position)
+                }
+            }
+            .show()
+    }
+
+    private fun showEditDialog(context: Context, task: Task, position: Int) {
+        val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 20, 40, 10)
         }
@@ -77,27 +79,26 @@ class TaskAdapter(
             hint = "Task title"
             setText(task.title)
         }
-
         val descInput = EditText(context).apply {
             hint = "Description"
             setText(task.description)
         }
 
-        linear.addView(titleInput)
-        linear.addView(descInput)
+        layout.addView(titleInput)
+        layout.addView(descInput)
 
-        androidx.appcompat.app.AlertDialog.Builder(context)
+        AlertDialog.Builder(context)
             .setTitle("Edit Task")
-            .setView(linear)
+            .setView(layout)
             .setPositiveButton("Save") { _, _ ->
                 val newTitle = titleInput.text.toString().trim()
                 val newDesc = descInput.text.toString().trim()
                 if (newTitle.isNotEmpty()) {
+                    // Update local object first (optimistic UI). Activity will persist.
                     task.title = newTitle
                     task.description = newDesc
                     onTaskUpdated?.invoke(task)
-                    notifyDataSetChanged()
-                    Toast.makeText(context, "Task updated!", Toast.LENGTH_SHORT).show() // confirmation toast
+                    notifyItemChanged(position)
                 } else {
                     Toast.makeText(context, "Title cannot be empty", Toast.LENGTH_SHORT).show()
                 }
@@ -106,11 +107,12 @@ class TaskAdapter(
             .show()
     }
 
-    private fun showDeleteConfirmation(context: Context, task: Task) {
-        androidx.appcompat.app.AlertDialog.Builder(context)
+    private fun showDeleteConfirmation(context: Context, task: Task, position: Int) {
+        AlertDialog.Builder(context)
             .setTitle("Delete Task")
             .setMessage("Are you sure you want to delete this task?")
             .setPositiveButton("Delete") { _, _ ->
+                // Do NOT remove the item locally here — wait for activity/server confirmation.
                 onTaskDeleted?.invoke(task)
             }
             .setNegativeButton("Cancel", null)
@@ -119,14 +121,26 @@ class TaskAdapter(
 
     override fun getItemCount(): Int = tasks.size
 
-    fun addTask(task: Task) {
-        tasks.add(0, task)
-        notifyItemInserted(0)
+    // Helpers for Activity to update the adapter after server responses:
+    fun replaceAll(newList: List<Task>) {
+        tasks.clear()
+        tasks.addAll(newList)
+        notifyDataSetChanged()
     }
 
-    fun updateTasks(newTasks: List<Task>) {
-        tasks.clear()
-        tasks.addAll(newTasks)
-        notifyDataSetChanged()
+    fun removeTaskById(taskId: String) {
+        val index = tasks.indexOfFirst { it.id == taskId }
+        if (index >= 0) {
+            tasks.removeAt(index)
+            notifyItemRemoved(index)
+        }
+    }
+
+    fun updateTaskById(updated: Task) {
+        val index = tasks.indexOfFirst { it.id == updated.id }
+        if (index >= 0) {
+            tasks[index] = updated
+            notifyItemChanged(index)
+        }
     }
 }

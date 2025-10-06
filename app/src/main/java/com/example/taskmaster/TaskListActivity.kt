@@ -2,21 +2,22 @@ package com.example.taskmaster
 
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.taskmaster.adapter.TaskAdapter
+import com.example.taskmaster.api.RetrofitInstance
 import com.example.taskmaster.model.Task
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreSettings
-import com.google.firebase.firestore.firestore
-import java.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TaskListActivity : AppCompatActivity() {
 
@@ -24,9 +25,7 @@ class TaskListActivity : AppCompatActivity() {
     private lateinit var adapter: TaskAdapter
     private val tasks = mutableListOf<Task>()
 
-    // Firebase instances
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
-    private val db: FirebaseFirestore = Firebase.firestore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,26 +33,24 @@ class TaskListActivity : AppCompatActivity() {
 
         recycler = findViewById(R.id.recyclerTasks)
         recycler.layoutManager = LinearLayoutManager(this)
-        adapter = TaskAdapter(tasks,
-            onTaskUpdated = { task -> showEditTaskDialog(task) },
-            onTaskDeleted = { task -> showDeleteConfirmation(task) }
+
+        adapter = TaskAdapter(
+            tasks,
+            onTaskUpdated = { task -> updateTaskOnServer(task) },
+            onTaskDeleted = { task -> deleteTaskOnServer(task) }
         )
         recycler.adapter = adapter
 
-        // Enable offline persistence
-        val settings = FirebaseFirestoreSettings.Builder()
-            .setPersistenceEnabled(true)
-            .build()
-        db.firestoreSettings = settings
-
-        // Real-time updates
-        listenToTasksRealtime()
+        fetchTasksFromServer()
 
         val fab = findViewById<FloatingActionButton>(R.id.fabAddTask)
         fab.setOnClickListener { showAddTaskDialog() }
+    }
 
-        // Optional Firestore test
-        testFirestoreConnection()
+    // Auto-refresh whenever user returns to TaskListActivity
+    override fun onResume() {
+        super.onResume()
+        fetchTasksFromServer() // refresh every time user returns
     }
 
     private fun showAddTaskDialog() {
@@ -82,8 +79,9 @@ class TaskListActivity : AppCompatActivity() {
                 val title = titleInput.text.toString().trim()
                 val desc = descInput.text.toString().trim()
                 if (title.isNotEmpty()) {
-                    val task = Task(UUID.randomUUID().toString(), title, desc, false)
-                    saveTaskToFirestore(task)
+                    val userId = auth.currentUser?.uid ?: return@setPositiveButton
+                    val task = Task(id = null, userId = userId, title = title, description = desc)
+                    createTaskOnServer(task)
                 } else {
                     Toast.makeText(this, "Title cannot be empty", Toast.LENGTH_SHORT).show()
                 }
@@ -92,142 +90,106 @@ class TaskListActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun saveTaskToFirestore(task: Task) {
+    // --- API: Fetch tasks ---
+    private fun fetchTasksFromServer() {
         val userId = auth.currentUser?.uid ?: return
-
-        db.collection("users")
-            .document(userId)
-            .collection("tasks")
-            .document(task.id)
-            .set(task)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Task added!", Toast.LENGTH_SHORT).show()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Failed to save task: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-    }
-
-    private fun listenToTasksRealtime() {
-        val userId = auth.currentUser?.uid ?: return
-
-        db.collection("users")
-            .document(userId)
-            .collection("tasks")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Toast.makeText(this, "Error loading tasks: ${error.message}", Toast.LENGTH_SHORT).show()
-                    return@addSnapshotListener
-                }
-
-                tasks.clear()
-                snapshot?.documents?.forEach { doc ->
-                    val task = doc.toObject(Task::class.java)
-                    if (task != null) tasks.add(task)
-                }
-                adapter.notifyDataSetChanged()
-            }
-    }
-
-    // 🔹 Edit task directly (no pre-confirmation)
-    private fun showEditTaskDialog(task: Task) {
-        val linear = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 20, 40, 10)
-        }
-
-        val titleInput = EditText(this).apply {
-            hint = "Task title"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setText(task.title)
-        }
-
-        val descInput = EditText(this).apply {
-            hint = "Description"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setText(task.description)
-        }
-
-        linear.addView(titleInput)
-        linear.addView(descInput)
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Edit Task")
-            .setView(linear)
-            .setPositiveButton("Save") { _, _ ->
-                val newTitle = titleInput.text.toString().trim()
-                val newDesc = descInput.text.toString().trim()
-                if (newTitle.isNotEmpty()) {
-                    task.title = newTitle
-                    task.description = newDesc
-                    updateTaskInFirestore(task)
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = RetrofitInstance.api.getTasks(userId)
+                if (response.isSuccessful) {
+                    val fetchedTasks = response.body() ?: emptyList()
+                    withContext(Dispatchers.Main) {
+                        tasks.clear()
+                        tasks.addAll(fetchedTasks)
+                        adapter.replaceAll(fetchedTasks)
+                    }
                 } else {
-                    Toast.makeText(this, "Title cannot be empty", Toast.LENGTH_SHORT).show()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@TaskListActivity, "Failed to load tasks", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@TaskListActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
     }
 
-    // 🔹 Confirm before deleting task
-    private fun showDeleteConfirmation(task: Task) {
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Delete Task")
-            .setMessage("Are you sure you want to delete this task?")
-            .setPositiveButton("Delete") { _, _ -> deleteTaskFromFirestore(task) }
-            .setNegativeButton("Cancel", null)
-            .show()
+    // --- API: Create task ---
+    private fun createTaskOnServer(task: Task) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = RetrofitInstance.api.createTask(task)
+                withContext(Dispatchers.Main) {
+                    if (response.isSuccessful) {
+                        // server returns TaskResponse with new id — add to local and refresh
+                        val createdTask = response.body()?.let { task.copy(id = it.taskId) } ?: task
+                        tasks.add(0, createdTask)
+                        adapter.replaceAll(tasks)
+                        Toast.makeText(this@TaskListActivity, "Task added!", Toast.LENGTH_SHORT).show()
+                        // keep lists consistent by refreshing from server
+                        fetchTasksFromServer()
+                    } else {
+                        Toast.makeText(this@TaskListActivity, "Failed to add task", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@TaskListActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
-    // 🔹 Update task (title, description, completed)
-    private fun updateTaskInFirestore(task: Task) {
-        val userId = auth.currentUser?.uid ?: return
-        db.collection("users")
-            .document(userId)
-            .collection("tasks")
-            .document(task.id)
-            .set(task)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Task updated!", Toast.LENGTH_SHORT).show()
+    // --- API: Update task ---
+    private fun updateTaskOnServer(task: Task) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val taskId = task.id ?: return@launch
+                val response = RetrofitInstance.api.updateTask(taskId, task.copy(id = null))
+                Log.d("API_UPDATE", "Response code: ${response.code()} | body: ${response.errorBody()?.string()}")
+
+                if (!response.isSuccessful) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@TaskListActivity, "Failed to update task (${response.code()})", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@TaskListActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Failed to update task: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+        }
     }
 
-    // 🔹 Delete task
-    private fun deleteTaskFromFirestore(task: Task) {
-        val userId = auth.currentUser?.uid ?: return
-        db.collection("users")
-            .document(userId)
-            .collection("tasks")
-            .document(task.id)
-            .delete()
-            .addOnSuccessListener {
-                tasks.remove(task)
-                adapter.notifyDataSetChanged()
-                Toast.makeText(this, "Task deleted!", Toast.LENGTH_SHORT).show()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Failed to delete task: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-    }
 
-    // 🔹 Optional Firestore test function
-    private fun testFirestoreConnection() {
-        val testDoc = hashMapOf(
-            "message" to "Hello Firestore!",
-            "timestamp" to System.currentTimeMillis()
-        )
+    // --- API: Delete task ---
+    private fun deleteTaskOnServer(task: Task) {
+        val taskId = task.id ?: run {
+            Toast.makeText(this, "Cannot delete: missing id", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-        db.collection("test")
-            .document("connection_test")
-            .set(testDoc)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Firestore test succeeded!", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val response = RetrofitInstance.api.deleteTask(taskId)
+                withContext(Dispatchers.Main) {
+                    if (response.isSuccessful) {
+                        adapter.removeTaskById(taskId)
+                        Toast.makeText(this@TaskListActivity, "Task deleted", Toast.LENGTH_SHORT).show()
+                        fetchTasksFromServer()
+                    } else {
+                        Toast.makeText(this@TaskListActivity, "Failed to delete task", Toast.LENGTH_SHORT).show()
+                        fetchTasksFromServer()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@TaskListActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    fetchTasksFromServer()
+                }
             }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Firestore test failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
+        }
     }
 }
