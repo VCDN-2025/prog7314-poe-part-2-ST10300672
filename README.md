@@ -56,7 +56,7 @@ TaskMaster follows the **MVVM (Model-View-ViewModel)** architecture pattern to e
 
 ### 4. **REST API Integration**
 - Tasks are sent and retrieved through a **custom REST API**.
-- The API is hosted online and connects to a **remote database** (e.g., MongoDB or MySQL).
+- The API is hosted online on **Render.com** and connects to a **remote MongoDB database**.
 - Implemented using standard **CRUD operations (Create, Read, Update, Delete)**.
 
 ---
