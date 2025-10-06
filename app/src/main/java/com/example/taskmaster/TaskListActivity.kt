@@ -2,7 +2,6 @@ package com.example.taskmaster
 
 import android.os.Bundle
 import android.text.InputType
-import android.util.Log
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -24,7 +23,6 @@ class TaskListActivity : AppCompatActivity() {
     private lateinit var recycler: RecyclerView
     private lateinit var adapter: TaskAdapter
     private val tasks = mutableListOf<Task>()
-
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,10 +45,9 @@ class TaskListActivity : AppCompatActivity() {
         fab.setOnClickListener { showAddTaskDialog() }
     }
 
-    // Auto-refresh whenever user returns to TaskListActivity
     override fun onResume() {
         super.onResume()
-        fetchTasksFromServer() // refresh every time user returns
+        fetchTasksFromServer()
     }
 
     private fun showAddTaskDialog() {
@@ -90,18 +87,35 @@ class TaskListActivity : AppCompatActivity() {
             .show()
     }
 
-    // --- API: Fetch tasks ---
     private fun fetchTasksFromServer() {
         val userId = auth.currentUser?.uid ?: return
+        val prefs = getSharedPreferences("app_settings", MODE_PRIVATE)
+        val showCompleted = prefs.getBoolean("show_completed", true)
+        val autoSort = prefs.getBoolean("auto_sort", true)
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val response = RetrofitInstance.api.getTasks(userId)
                 if (response.isSuccessful) {
-                    val fetchedTasks = response.body() ?: emptyList()
+                    val fetchedTasksRaw: List<Task> = response.body() ?: emptyList()
+
+                    // --- Apply settings ---
+                    val filteredTasks: List<Task> = if (!showCompleted) {
+                        fetchedTasksRaw.filter { task -> !task.completed }
+                    } else {
+                        fetchedTasksRaw
+                    }
+
+                    val sortedTasks: List<Task> = if (autoSort) {
+                        filteredTasks.sortedByDescending { task -> task.id?.toIntOrNull() ?: 0 }
+                    } else {
+                        filteredTasks.sortedBy { task -> task.id?.toIntOrNull() ?: 0 }
+                    }
+
                     withContext(Dispatchers.Main) {
                         tasks.clear()
-                        tasks.addAll(fetchedTasks)
-                        adapter.replaceAll(fetchedTasks)
+                        tasks.addAll(sortedTasks)
+                        adapter.replaceAll(sortedTasks)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
@@ -116,19 +130,16 @@ class TaskListActivity : AppCompatActivity() {
         }
     }
 
-    // --- API: Create task ---
     private fun createTaskOnServer(task: Task) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val response = RetrofitInstance.api.createTask(task)
                 withContext(Dispatchers.Main) {
                     if (response.isSuccessful) {
-                        // server returns TaskResponse with new id — add to local and refresh
                         val createdTask = response.body()?.let { task.copy(id = it.taskId) } ?: task
                         tasks.add(0, createdTask)
                         adapter.replaceAll(tasks)
                         Toast.makeText(this@TaskListActivity, "Task added!", Toast.LENGTH_SHORT).show()
-                        // keep lists consistent by refreshing from server
                         fetchTasksFromServer()
                     } else {
                         Toast.makeText(this@TaskListActivity, "Failed to add task", Toast.LENGTH_SHORT).show()
@@ -142,14 +153,11 @@ class TaskListActivity : AppCompatActivity() {
         }
     }
 
-    // --- API: Update task ---
     private fun updateTaskOnServer(task: Task) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val taskId = task.id ?: return@launch
                 val response = RetrofitInstance.api.updateTask(taskId, task.copy(id = null))
-                Log.d("API_UPDATE", "Response code: ${response.code()} | body: ${response.errorBody()?.string()}")
-
                 if (!response.isSuccessful) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@TaskListActivity, "Failed to update task (${response.code()})", Toast.LENGTH_SHORT).show()
@@ -163,8 +171,6 @@ class TaskListActivity : AppCompatActivity() {
         }
     }
 
-
-    // --- API: Delete task ---
     private fun deleteTaskOnServer(task: Task) {
         val taskId = task.id ?: run {
             Toast.makeText(this, "Cannot delete: missing id", Toast.LENGTH_SHORT).show()

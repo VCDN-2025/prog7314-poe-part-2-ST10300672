@@ -3,7 +3,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
 
     <!-- Header -->
     <TextView
@@ -13,6 +14,7 @@
         android:text="My Tasks"
         android:textSize="22sp"
         android:textStyle="bold"
+        android:textColor="@android:color/white"
         android:layout_margin="16dp"/>
 
     <!-- RecyclerView -->
@@ -21,7 +23,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="56dp"
-        android:padding="12dp"
+        android:padding="8dp"
         android:clipToPadding="false"/>
 
     <!-- Floating Action Button -->
@@ -32,7 +34,8 @@
         android:contentDescription="Add Task"
         app:srcCompat="@android:drawable/ic_input_add"
         app:tint="@android:color/white"
-        app:layout_anchorGravity="bottom|end"
+        app:backgroundTint="@color/teal_700"
         android:layout_margin="16dp"
-        app:layout_anchor="@id/recyclerTasks" />
+        app:layout_anchor="@id/recyclerTasks"
+        app:layout_anchorGravity="bottom|end"/>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

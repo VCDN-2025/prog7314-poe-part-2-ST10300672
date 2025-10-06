@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = taskAdapter
 
-        // --- Fetch tasks from your API ---
+        // --- Fetch tasks from server with settings applied ---
         fetchTasksFromServer()
 
         // --- Navigation buttons ---
@@ -86,27 +86,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Auto-refresh whenever user returns to MainActivity
     override fun onResume() {
         super.onResume()
-        fetchTasksFromServer() // refresh every time user returns
+        fetchTasksFromServer()
         val user = auth.currentUser
         findViewById<TextView>(R.id.tvName).text = user?.displayName ?: "No Name"
     }
 
-    // --- Fetch tasks from Node.js API ---
     private fun fetchTasksFromServer() {
         val userId = auth.currentUser?.uid ?: return
+        val prefs = getSharedPreferences("app_settings", MODE_PRIVATE)
+        val showCompleted = prefs.getBoolean("show_completed", true)
+        val autoSort = prefs.getBoolean("auto_sort", true)
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val response = RetrofitInstance.api.getTasks(userId)
                 if (response.isSuccessful) {
-                    val fetchedTasks = response.body() ?: emptyList()
+                    val fetchedTasksRaw: List<Task> = response.body() ?: emptyList()
+
+                    // --- Apply settings ---
+                    val filteredTasks: List<Task> = if (!showCompleted) {
+                        fetchedTasksRaw.filter { task: Task -> !task.completed }
+                    } else {
+                        fetchedTasksRaw
+                    }
+
+                    val sortedTasks: List<Task> = if (autoSort) {
+                        filteredTasks.sortedByDescending { task -> task.id?.toIntOrNull() ?: 0 }
+                    } else {
+                        filteredTasks.sortedBy { task -> task.id?.toIntOrNull() ?: 0 }
+                    }
+
                     withContext(Dispatchers.Main) {
                         tasks.clear()
-                        tasks.addAll(fetchedTasks)
-                        taskAdapter.replaceAll(fetchedTasks)
+                        tasks.addAll(sortedTasks)
+                        taskAdapter.replaceAll(sortedTasks)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
@@ -121,14 +136,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- Update task on Node.js API ---
     private fun updateTaskOnServer(task: Task) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val taskId = task.id ?: return@launch
                 val response = RetrofitInstance.api.updateTask(taskId, task.copy(id = null))
                 Log.d("API_UPDATE", "Response code: ${response.code()} | body: ${response.errorBody()?.string()}")
-
                 if (!response.isSuccessful) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "Failed to update task (${response.code()})", Toast.LENGTH_SHORT).show()
@@ -142,8 +155,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-    // --- Delete task on Node.js API ---
     private fun deleteTaskOnServer(task: Task) {
         val taskId = task.id ?: run {
             Toast.makeText(this, "Cannot delete: missing id", Toast.LENGTH_SHORT).show()
@@ -155,10 +166,8 @@ class MainActivity : AppCompatActivity() {
                 val response = RetrofitInstance.api.deleteTask(taskId)
                 withContext(Dispatchers.Main) {
                     if (response.isSuccessful) {
-                        // remove locally for immediate feedback
                         taskAdapter.removeTaskById(taskId)
                         Toast.makeText(this@MainActivity, "Task deleted", Toast.LENGTH_SHORT).show()
-                        // refresh from server to ensure consistency
                         fetchTasksFromServer()
                     } else {
                         Toast.makeText(this@MainActivity, "Failed to delete task", Toast.LENGTH_SHORT).show()
