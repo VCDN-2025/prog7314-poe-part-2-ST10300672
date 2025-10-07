@@ -135,7 +135,7 @@ This ensures that every commit and pull request triggers an automated build proc
 | Language | Kotlin |
 | IDE | Android Studio |
 | Authentication | Firebase Authentication (Google SSO) |
-| Backend | Custom REST API |
+| Backend | Render.com, Custom Rest API |
 | Networking | Retrofit |
 | Database | Firebase / Remote DB |
 | UI Framework | Material Design |
@@ -174,7 +174,7 @@ A professional demonstration video has been prepared showing:
 - REST API communication
 - Overall UI and usability
 
-Youtube Link:
+Youtube Link: (https://youtu.be/43vzrM2iIHQ)
 
 
 
